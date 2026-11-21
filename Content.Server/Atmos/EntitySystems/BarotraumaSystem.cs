@@ -42,7 +42,7 @@ namespace Content.Server.Atmos.EntitySystems
         /// <summary>
         /// Generic method for updating resistance on component Lifestage events
         /// </summary>
-        private void OnUpdateResistance(EntityUid uid, PressureProtectionComponent pressureProtection, EntityEventArgs args)
+        public void OnUpdateResistance(EntityUid uid, PressureProtectionComponent pressureProtection, EntityEventArgs args)
         {
             if (TryComp<BarotraumaComponent>(uid, out var barotrauma))
             {
@@ -50,7 +50,7 @@ namespace Content.Server.Atmos.EntitySystems
             }
         }
 
-        private void OnPressureProtectionEquipped(EntityUid uid, PressureProtectionComponent pressureProtection, GotEquippedEvent args)
+        public void OnPressureProtectionEquipped(EntityUid uid, PressureProtectionComponent pressureProtection, GotEquippedEvent args)
         {
             if (TryComp<BarotraumaComponent>(args.EquipTarget, out var barotrauma) && barotrauma.ProtectionSlots.Contains(args.Slot))
             {
@@ -58,7 +58,7 @@ namespace Content.Server.Atmos.EntitySystems
             }
         }
 
-        private void OnPressureProtectionUnequipped(EntityUid uid, PressureProtectionComponent pressureProtection, GotUnequippedEvent args)
+        public void OnPressureProtectionUnequipped(EntityUid uid, PressureProtectionComponent pressureProtection, GotUnequippedEvent args)
         {
             if (TryComp<BarotraumaComponent>(args.EquipTarget, out var barotrauma) && barotrauma.ProtectionSlots.Contains(args.Slot))
             {
@@ -70,7 +70,7 @@ namespace Content.Server.Atmos.EntitySystems
         /// Computes the pressure resistance for the entity coming from the equipment and any innate resistance.
         /// The ProtectionSlots field of the Barotrauma component specifies which parts must be protected for the protection to have any effet.
         /// </summary>
-        private void UpdateCachedResistances(EntityUid uid, BarotraumaComponent barotrauma)
+        public void UpdateCachedResistances(EntityUid uid, BarotraumaComponent barotrauma)
         {
 
             if (barotrauma.ProtectionSlots.Count != 0)

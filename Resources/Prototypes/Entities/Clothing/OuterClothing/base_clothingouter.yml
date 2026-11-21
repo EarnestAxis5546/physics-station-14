@@ -166,6 +166,13 @@
   id: ClothingOuterHardsuitBase
   name: base hardsuit
   components:
+  - type: SuitIntegrity
+    maxIntegrity: 100
+    thermalInsulation: 0.85
+    coolingCapacity: 150
+  - type: Damageable
+    damageContainer: Inorganic
+    damageModifierSet: Metallic
   - type: PressureProtection
     highPressureMultiplier: 0.3
   - type: ClothingSpeedModifier
