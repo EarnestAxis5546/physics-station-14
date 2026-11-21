@@ -1,3 +1,4 @@
+// Physics Station 14
 using System.Numerics;
 using Robust.Shared.GameStates;
 using Robust.Shared.Serialization;
@@ -8,7 +9,12 @@ namespace Content.Shared.Parallax;
 public sealed partial class ZoneParallaxComponent : Component
 {
     [DataField, AutoNetworkedField]
-    public List<ParallaxZone> Zones = new();
+    public List<ParallaxZone> Zones = new()
+    {
+        new() { Parallax = "Default", Center = Vector2.Zero, InnerRadius = 0f,    OuterRadius = 2500f },
+        new() { Parallax = "Aspid",   Center = Vector2.Zero, InnerRadius = 2500f, OuterRadius = 5000f },
+        new() { Parallax = "Kettle",  Center = Vector2.Zero, InnerRadius = 5000f, OuterRadius = 99999f },
+    };
 }
 
 [DataDefinition, Serializable, NetSerializable]
