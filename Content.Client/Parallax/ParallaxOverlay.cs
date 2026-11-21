@@ -1,6 +1,7 @@
 using System.Numerics;
 using Content.Client.Parallax.Managers;
 using Content.Shared.CCVar;
+using Content.Shared.Parallax;
 using Content.Shared.Parallax.Biomes;
 using Robust.Client.GameObjects;
 using Robust.Client.Graphics;
@@ -48,7 +49,9 @@ public sealed partial class ParallaxOverlay : Overlay
         if (!_configurationManager.GetCVar(CCVars.ParallaxEnabled))
             return;
 
+        // Получаем позицию камеры напрямую
         var position = args.Viewport.Eye?.Position.Position ?? Vector2.Zero;
+
         var worldHandle = args.WorldHandle;
 
         var weightedLayers = _parallax.GetWeightedLayers(args.MapId, position);

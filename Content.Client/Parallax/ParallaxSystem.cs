@@ -79,26 +79,37 @@ public sealed partial class ParallaxSystem : SharedParallaxSystem
         return _parallax.GetParallaxLayers(GetParallax(_map.GetMapOrInvalid(mapId)));
     }
 
+    private static float Smoothstep(float edge0, float edge1, float x)
+    {
+        var t = Math.Clamp((x - edge0) / Math.Max(edge1 - edge0, 0.001f), 0f, 1f);
+        return t * t * (3f - 2f * t);
+    }
+
     /// <summary>
     /// Returns each parallax layer set with an alpha weight based on eye distance
-    /// to the zones on the map. Falls back to the map's single parallax if no zones.
+    /// to the zones on the map, including an opaque base layer.
     /// </summary>
     public List<(ParallaxLayerPrepared[] Layers, float Alpha)> GetWeightedLayers(MapId mapId, Vector2 eyePos)
     {
         var result = new List<(ParallaxLayerPrepared[], float)>();
+
+        // Гарантированный непрозрачный базовый слой, чтобы фон не становился черным
+        result.Add((GetParallaxLayers(mapId), 1f));
+
         var mapUid = _map.GetMapOrInvalid(mapId);
 
         if (!TryComp<ZoneParallaxComponent>(mapUid, out var zoneComp) || zoneComp.Zones.Count == 0)
         {
-            result.Add((GetParallaxLayers(mapId), 1f));
             return result;
         }
 
         foreach (var zone in zoneComp.Zones)
         {
             var d = (eyePos - zone.Center).Length();
-            var t = Math.Clamp((d - zone.InnerRadius) / Math.Max(zone.OuterRadius - zone.InnerRadius, 0.001f), 0f, 1f);
-            var alpha = 1f - t * t * (3f - 2f * t); // smoothstep fade
+
+            var fadeIn = Smoothstep(zone.InnerRadius - zone.FadeWidth, zone.InnerRadius, d);
+            var fadeOut = 1f - Smoothstep(zone.OuterRadius, zone.OuterRadius + zone.FadeWidth, d);
+            var alpha = Math.Min(fadeIn, fadeOut);
 
             if (alpha > 0.001f)
                 result.Add((_parallax.GetParallaxLayers(zone.Parallax), alpha));
@@ -117,18 +128,6 @@ public sealed partial class ParallaxSystem : SharedParallaxSystem
         return TryComp<ParallaxComponent>(mapUid, out var parallax) ? parallax.Parallax : Fallback;
     }
 
-    /// <summary>
-    /// Draws a texture as parallax in the specified world handle.
-    /// </summary>
-    /// <param name="worldHandle"></param>
-    /// <param name="worldAABB">WorldAABB to use</param>
-    /// <param name="sprite">Sprite to draw</param>
-    /// <param name="curTime">Current time, unused if scrolling not set</param>
-    /// <param name="position">Current position of the parallax</param>
-    /// <param name="scrolling">How much to scroll the parallax texture per second</param>
-    /// <param name="scale">Scale of the texture</param>
-    /// <param name="slowness">How slow the parallax moves compared to position</param>
-    /// <param name="modulate">Color modulation applied to drawing the texture</param>
     public void DrawParallax(
         DrawingHandleWorld worldHandle,
         Box2 worldAABB,
@@ -140,23 +139,14 @@ public sealed partial class ParallaxSystem : SharedParallaxSystem
         float slowness = 0f,
         Color? modulate = null)
     {
-        // Size of the texture in world units.
         var size = sprite.Size / (float) EyeManager.PixelsPerMeter * scale;
         var scrolled = scrolling * (float) curTime.TotalSeconds;
 
-        // Origin - start with the parallax shift itself.
         var originBL = position * slowness + scrolled;
-
-        // Centre the image.
         originBL -= size / 2;
 
-        // Remove offset so we can floor.
         var flooredBL = worldAABB.BottomLeft - originBL;
-
-        // Floor to background size.
         flooredBL = (flooredBL / size).Floored() * size;
-
-        // Re-offset.
         flooredBL += originBL;
 
         for (var x = flooredBL.X; x < worldAABB.Right; x += size.X)
