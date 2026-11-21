@@ -86,7 +86,7 @@ public sealed partial class ExplosiveBarotraumaSystem : EntitySystem
             var mixture = _atmosphereSystem.GetTileMixture((uid, xform))
                           ?? _atmosphereSystem.GetContainingMixture((uid, xform));
 
-            var envPressure = mixture?.Pressure ?? 0f;
+            var envPressure = MathF.Max(mixture?.Pressure ?? 0f, 1f);
 
             // Учитываем наличие геркостюмов / защиты от давления / иммунитета, чтобы человек в герметичном снаряжении «ощущал» давление около 1 атм — независимо от внешней среды.
             var felt = envPressure <= Atmospherics.OneAtmosphere
