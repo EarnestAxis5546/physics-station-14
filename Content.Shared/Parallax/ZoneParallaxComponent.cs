@@ -2,6 +2,8 @@ using System.Numerics;
 using Robust.Shared.GameStates;
 using Robust.Shared.Serialization;
 
+namespace Content.Shared.Parallax;
+
 [RegisterComponent, NetworkedComponent, AutoGenerateComponentState(true)]
 public sealed partial class ZoneParallaxComponent : Component
 {
@@ -13,7 +15,7 @@ public sealed partial class ZoneParallaxComponent : Component
 public sealed partial class ParallaxZone
 {
     [DataField(required: true)] public string Parallax = "Default";
-    [DataField] public Vector2 Center = Vector2.Zero; // map-local coords
-    [DataField] public float InnerRadius;             // full alpha inside
-    [DataField] public float OuterRadius = 500f;      // zero alpha outside
+    [DataField] public Vector2 Center = Vector2.Zero;
+    [DataField] public float InnerRadius;        // full alpha inside this distance
+    [DataField] public float OuterRadius = 500f; // fades to zero at this distance
 }
