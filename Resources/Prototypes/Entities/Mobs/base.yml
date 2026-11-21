@@ -234,7 +234,9 @@
   - type: Barotrauma
     damage:
       types:
-        Blunt: 0.15 #per second, scales with pressure and other constants.
+        Blunt: 8.0 #per second, scales with pressure and other constants.
+        Cellular: 4.0 #per second, scales with pressure and other constants.
+  - type: PressureHistory # Physics Station 14: Used to track the pressure history of a mob for barotrauma calculations.
 
 # Used for mobs that can be set on fire
 - type: entity
