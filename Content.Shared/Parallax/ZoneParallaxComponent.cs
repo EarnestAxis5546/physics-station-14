@@ -12,8 +12,8 @@ public sealed partial class ZoneParallaxComponent : Component
     public List<ParallaxZone> Zones = new()
     {
         new() { Parallax = "Default", Center = Vector2.Zero, InnerRadius = 0f,    OuterRadius = 2500f },
-        new() { Parallax = "Aspid",   Center = Vector2.Zero, InnerRadius = 2500f, OuterRadius = 5000f },
-        new() { Parallax = "Kettle",  Center = Vector2.Zero, InnerRadius = 5000f, OuterRadius = 99999f },
+        new() { Parallax = "ExoStation",   Center = Vector2.Zero, InnerRadius = 2500f, OuterRadius = 5000f },
+        new() { Parallax = "KettleStation",  Center = Vector2.Zero, InnerRadius = 5000f, OuterRadius = 99999f },
     };
 }
 
