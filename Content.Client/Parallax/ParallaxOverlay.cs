@@ -51,68 +51,75 @@ public sealed partial class ParallaxOverlay : Overlay
         var position = args.Viewport.Eye?.Position.Position ?? Vector2.Zero;
         var worldHandle = args.WorldHandle;
 
-        var layers = _parallax.GetParallaxLayers(args.MapId);
+        var weightedLayers = _parallax.GetWeightedLayers(args.MapId, position);
         var realTime = (float) _timing.RealTime.TotalSeconds;
 
-        foreach (var layer in layers)
+        foreach (var (layers, alpha) in weightedLayers)
         {
-            ShaderInstance? shader;
+            if (alpha <= 0.001f)
+                continue;
 
-            if (!string.IsNullOrEmpty(layer.Config.Shader))
-                shader = _prototypeManager.Index<ShaderPrototype>(layer.Config.Shader).Instance();
-            else
-                shader = null;
+            var modulate = Color.White.WithAlpha(alpha);
 
-            worldHandle.UseShader(shader);
-            var tex = layer.Texture;
-
-            // Size of the texture in world units.
-            var size = (tex.Size / (float) EyeManager.PixelsPerMeter) * layer.Config.Scale;
-
-            // The "home" position is the effective origin of this layer.
-            // Parallax shifting is relative to the home, and shifts away from the home and towards the Eye centre.
-            // The effects of this are such that a slowness of 1 anchors the layer to the centre of the screen, while a slowness of 0 anchors the layer to the world.
-            // (For values 0.0 to 1.0 this is in effect a lerp, but it's deliberately unclamped.)
-            // The ParallaxAnchor adapts the parallax for station positioning and possibly map-specific tweaks.
-            var home = layer.Config.WorldHomePosition + _manager.ParallaxAnchor;
-            var scrolled = layer.Config.Scrolling * realTime;
-
-            // Origin - start with the parallax shift itself.
-            var originBL = (position - home) * layer.Config.Slowness + scrolled;
-
-            // Place at the home.
-            originBL += home;
-
-            // Adjust.
-            originBL += layer.Config.WorldAdjustPosition;
-
-            // Centre the image.
-            originBL -= size / 2;
-
-            if (layer.Config.Tiled)
+            foreach (var layer in layers)
             {
-                // Remove offset so we can floor.
-                var flooredBL = args.WorldAABB.BottomLeft - originBL;
+                ShaderInstance? shader;
 
-                // Floor to background size.
-                flooredBL = (flooredBL / size).Floored() * size;
+                if (!string.IsNullOrEmpty(layer.Config.Shader))
+                    shader = _prototypeManager.Index<ShaderPrototype>(layer.Config.Shader).Instance();
+                else
+                    shader = null;
 
-                // Re-offset.
-                flooredBL += originBL;
+                worldHandle.UseShader(shader);
+                var tex = layer.Texture;
 
-                for (var x = flooredBL.X; x < args.WorldAABB.Right; x += size.X)
+                // Size of the texture in world units.
+                var size = (tex.Size / (float) EyeManager.PixelsPerMeter) * layer.Config.Scale;
+
+                // The "home" position is the effective origin of this layer.
+                // Parallax shifting is relative to the home, and shifts away from the home and towards the Eye centre.
+                // The effects of this are such that a slowness of 1 anchors the layer to the centre of the screen, while a slowness of 0 anchors the layer to the world.
+                // (For values 0.0 to 1.0 this is in effect a lerp, but it's deliberately unclamped.)
+                // The ParallaxAnchor adapts the parallax for station positioning and possibly map-specific tweaks.
+                var home = layer.Config.WorldHomePosition + _manager.ParallaxAnchor;
+                var scrolled = layer.Config.Scrolling * realTime;
+
+                // Origin - start with the parallax shift itself.
+                var originBL = (position - home) * layer.Config.Slowness + scrolled;
+
+                // Place at the home.
+                originBL += home;
+
+                // Adjust.
+                originBL += layer.Config.WorldAdjustPosition;
+
+                // Centre the image.
+                originBL -= size / 2;
+
+                if (layer.Config.Tiled)
                 {
-                    for (var y = flooredBL.Y; y < args.WorldAABB.Top; y += size.Y)
+                    // Remove offset so we can floor.
+                    var flooredBL = args.WorldAABB.BottomLeft - originBL;
+
+                    // Floor to background size.
+                    flooredBL = (flooredBL / size).Floored() * size;
+
+                    // Re-offset.
+                    flooredBL += originBL;
+
+                    for (var x = flooredBL.X; x < args.WorldAABB.Right; x += size.X)
                     {
-                        worldHandle.DrawTextureRect(tex, Box2.FromDimensions(new Vector2(x, y), size));
+                        for (var y = flooredBL.Y; y < args.WorldAABB.Top; y += size.Y)
+                        {
+                            worldHandle.DrawTextureRect(tex, Box2.FromDimensions(new Vector2(x, y), size), modulate);
+                        }
                     }
                 }
-            }
-            else
-            {
-                worldHandle.DrawTextureRect(tex, Box2.FromDimensions(originBL, size));
+                else
+                {
+                    worldHandle.DrawTextureRect(tex, Box2.FromDimensions(originBL, size), modulate);
+                }
             }
         }
     }
 }
-

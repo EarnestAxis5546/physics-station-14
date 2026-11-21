@@ -24,6 +24,7 @@ public sealed partial class ParallaxSystem : SharedParallaxSystem
         _overlay.AddOverlay(new ParallaxOverlay());
         SubscribeLocalEvent<PrototypesReloadedEventArgs>(OnReload);
         SubscribeLocalEvent<ParallaxComponent, AfterAutoHandleStateEvent>(OnAfterAutoHandleState);
+        SubscribeLocalEvent<ZoneParallaxComponent, AfterAutoHandleStateEvent>(OnZoneAfterAutoHandleState);
     }
 
     private void OnReload(PrototypesReloadedEventArgs obj)
@@ -38,6 +39,15 @@ public sealed partial class ParallaxSystem : SharedParallaxSystem
         {
             _parallax.UnloadParallax(comp.Parallax);
             _parallax.LoadParallaxByName(comp.Parallax);
+        }
+
+        foreach (var comp in EntityQuery<ZoneParallaxComponent>(true))
+        {
+            foreach (var zone in comp.Zones)
+            {
+                _parallax.UnloadParallax(zone.Parallax);
+                _parallax.LoadParallaxByName(zone.Parallax);
+            }
         }
     }
 
@@ -55,9 +65,46 @@ public sealed partial class ParallaxSystem : SharedParallaxSystem
         }
     }
 
+    private void OnZoneAfterAutoHandleState(EntityUid uid, ZoneParallaxComponent component, ref AfterAutoHandleStateEvent args)
+    {
+        foreach (var zone in component.Zones)
+        {
+            if (!_parallax.IsLoaded(zone.Parallax))
+                _parallax.LoadParallaxByName(zone.Parallax);
+        }
+    }
+
     public ParallaxLayerPrepared[] GetParallaxLayers(MapId mapId)
     {
         return _parallax.GetParallaxLayers(GetParallax(_map.GetMapOrInvalid(mapId)));
+    }
+
+    /// <summary>
+    /// Returns each parallax layer set with an alpha weight based on eye distance
+    /// to the zones on the map. Falls back to the map's single parallax if no zones.
+    /// </summary>
+    public List<(ParallaxLayerPrepared[] Layers, float Alpha)> GetWeightedLayers(MapId mapId, Vector2 eyePos)
+    {
+        var result = new List<(ParallaxLayerPrepared[], float)>();
+        var mapUid = _map.GetMapOrInvalid(mapId);
+
+        if (!TryComp<ZoneParallaxComponent>(mapUid, out var zoneComp) || zoneComp.Zones.Count == 0)
+        {
+            result.Add((GetParallaxLayers(mapId), 1f));
+            return result;
+        }
+
+        foreach (var zone in zoneComp.Zones)
+        {
+            var d = (eyePos - zone.Center).Length();
+            var t = Math.Clamp((d - zone.InnerRadius) / Math.Max(zone.OuterRadius - zone.InnerRadius, 0.001f), 0f, 1f);
+            var alpha = 1f - t * t * (3f - 2f * t); // smoothstep fade
+
+            if (alpha > 0.001f)
+                result.Add((_parallax.GetParallaxLayers(zone.Parallax), alpha));
+        }
+
+        return result;
     }
 
     public string GetParallax(MapId mapId)
