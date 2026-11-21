@@ -4,24 +4,21 @@ using Content.Server.Popups;
 using Content.Server.Stack;
 using Content.Server.Temperature.Systems;
 using Content.Shared.Atmos;
-using Content.Shared.Damage.Components;
+using Content.Shared.Damage;
 using Content.Shared.Damage.Systems;
 using Content.Shared.Examine;
 using Content.Shared.Interaction;
 using Content.Shared.Inventory;
+using Content.Shared.Inventory.Events;
 using Content.Shared.Popups;
 using Content.Shared.Stacks;
 using Content.Shared.Temperature.Components;
 using Content.Shared.Tools.Components;
 using Robust.Shared.Containers;
-using Content.Shared.Inventory.Events;
 
 namespace Content.Server.Atmos.EntitySystems;
 
-/// <summary>
-/// Целостность скафандра в хардкорном режиме: повреждения ухудшают защиту от перепада давления,
-/// моделируется внутренняя температура, а пробоины можно заделать.
-/// </summary>
+
 public sealed partial class SuitIntegritySystem : EntitySystem
 {
     [Dependency] private AtmosphereSystem _atmosphere = default!;
@@ -35,18 +32,26 @@ public sealed partial class SuitIntegritySystem : EntitySystem
     private const float UpdateInterval = 1f;
     private float _accumulator;
 
+    /// <summary>Fraction of wearer damage forwarded to the outer suit.</summary>
+    private const float SuitDamageShare = 0.5f;
+
+    /// <summary>Fraction of wearer damage forwarded to the helmet.</summary>
+    private const float HelmetDamageShare = 0.25f;
+
     // Damage types that meaningfully tear a suit.
     private static readonly string[] BreachDamageTypes = { "Blunt", "Slash", "Piercing", "Heat", "Shock" };
 
     public override void Initialize()
     {
         SubscribeLocalEvent<SuitIntegrityComponent, MapInitEvent>(OnMapInit);
-        SubscribeLocalEvent<SuitIntegrityComponent, DamageChangedEvent>(OnDamageChanged);
         SubscribeLocalEvent<SuitIntegrityComponent, GetPressureProtectionValuesEvent>(OnGetPressureValues);
         SubscribeLocalEvent<SuitIntegrityComponent, ExaminedEvent>(OnExamined);
         SubscribeLocalEvent<SuitIntegrityComponent, InteractUsingEvent>(OnInteractUsing);
         SubscribeLocalEvent<SuitIntegrityComponent, GotEquippedEvent>(OnEquipped);
         SubscribeLocalEvent<SuitIntegrityComponent, GotUnequippedEvent>(OnUnequipped);
+
+        // Damage lands on the WEARER's DamageableComponent, not the suit.
+        SubscribeLocalEvent<InventoryComponent, DamageDealtEvent>(OnWearerDamageDealt);
     }
 
     private void OnMapInit(Entity<SuitIntegrityComponent> ent, ref MapInitEvent args)
@@ -55,32 +60,53 @@ public sealed partial class SuitIntegritySystem : EntitySystem
         UpdateBreachState(ent);
     }
 
-    private void OnDamageChanged(Entity<SuitIntegrityComponent> ent, ref DamageChangedEvent args)
-    {
-        if (!args.DamageIncreased || args.DamageDelta == null)
-            return;
+    #region Damage & breach
 
+    private void OnWearerDamageDealt(Entity<InventoryComponent> ent, ref DamageDealtEvent args)
+    {
         var relevant = 0f;
         foreach (var type in BreachDamageTypes)
         {
-            if (args.DamageDelta.DamageDict.TryGetValue(type, out var amount) && amount > 0)
+            if (args.Damage.DamageDict.TryGetValue(type, out var amount) && amount > 0)
                 relevant += amount.Float();
         }
 
         if (relevant <= 0f)
             return;
 
-        var oldBreached = ent.Comp.IsBreached;
-        ent.Comp.CurrentIntegrity = MathF.Max(0f,
-            ent.Comp.CurrentIntegrity - relevant * ent.Comp.IntegrityPerDamage);
+        var refreshed = false;
 
-        UpdateBreachState(ent);
+        if (_inventory.TryGetSlotEntity(ent.Owner, "outerClothing", out var suit, ent.Comp)
+            && TryComp<SuitIntegrityComponent>(suit.Value, out var suitComp))
+        {
+            refreshed |= DegradeSuit((suit.Value, suitComp), relevant * SuitDamageShare, ent.Owner);
+        }
 
-        if (!oldBreached && ent.Comp.IsBreached)
-            NotifyWearer(ent, "suit-integrity-breach-warning", PopupType.LargeCaution);
+        if (_inventory.TryGetSlotEntity(ent.Owner, "head", out var helmet, ent.Comp)
+            && TryComp<SuitIntegrityComponent>(helmet.Value, out var helmetComp))
+        {
+            refreshed |= DegradeSuit((helmet.Value, helmetComp), relevant * HelmetDamageShare, ent.Owner);
+        }
 
-        // Pressure values changed: force the wearer to recompute resistances now.
-        RefreshWearerResistances(ent);
+        // If neither slot degraded (no suit worn), nothing to refresh.
+        if (refreshed && TryComp<BarotraumaComponent>(ent.Owner, out var barotrauma))
+            _barotrauma.UpdateCachedResistances(ent.Owner, barotrauma);
+    }
+
+    private bool DegradeSuit(Entity<SuitIntegrityComponent> suit, float amount, EntityUid wearer)
+    {
+        var comp = suit.Comp;
+        if (comp.CurrentIntegrity <= 0f)
+            return false;
+
+        var oldBreached = comp.IsBreached;
+        comp.CurrentIntegrity = MathF.Max(0f, comp.CurrentIntegrity - amount * comp.IntegrityPerDamage);
+        UpdateBreachState(suit);
+
+        if (!oldBreached && comp.IsBreached)
+            _popup.PopupEntity(Loc.GetString("suit-integrity-breach-warning"), wearer, wearer, PopupType.LargeCaution);
+
+        return true;
     }
 
     private void OnGetPressureValues(Entity<SuitIntegrityComponent> ent, ref GetPressureProtectionValuesEvent args)
@@ -131,6 +157,10 @@ public sealed partial class SuitIntegritySystem : EntitySystem
             _barotrauma.UpdateCachedResistances(wearer, barotrauma);
     }
 
+    #endregion
+
+    #region Thermal simulation
+
     public override void Update(float frameTime)
     {
         _accumulator += frameTime;
@@ -157,7 +187,7 @@ public sealed partial class SuitIntegritySystem : EntitySystem
         if (!HasComp<InventoryComponent>(wearer))
             return;
 
-        // Температура окружающей среды, определяемая по плитке на теле пользователя (вакуум => радиационные потери).
+        // Ambient temperature from the wearer's tile (vacuum => radiative loss).
         var ambient = Atmospherics.TCMB; // deep space ~2.7K
         var inVacuum = true;
         if (_atmosphere.GetTileMixture(wearer) is { } mixture)
@@ -224,11 +254,9 @@ public sealed partial class SuitIntegritySystem : EntitySystem
         }
     }
 
-    private void NotifyWearer(Entity<SuitIntegrityComponent> ent, string locId, PopupType type)
-    {
-        if (_container.TryGetContainingContainer(ent.Owner, out var container))
-            _popup.PopupEntity(Loc.GetString(locId), container.Owner, container.Owner, type);
-    }
+    #endregion
+
+    #region Examine & repair
 
     private void OnExamined(Entity<SuitIntegrityComponent> ent, ref ExaminedEvent args)
     {
@@ -300,4 +328,5 @@ public sealed partial class SuitIntegritySystem : EntitySystem
             ent.Owner, user);
     }
 
+    #endregion
 }

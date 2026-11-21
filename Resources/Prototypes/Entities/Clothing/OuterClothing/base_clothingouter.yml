@@ -143,6 +143,10 @@
 # SlotBlocker blocked until UI change
 #  - type: SlotBlock
 #    slots: [innerclothing, feet]
+  - type: SuitIntegrity
+    maxIntegrity: 100
+    thermalInsulation: 0.85
+    coolingCapacity: 150
   - type: PressureProtection
     highPressureMultiplier: 0.6
     lowPressureMultiplier: 1000
@@ -167,9 +171,9 @@
   name: base hardsuit
   components:
   - type: SuitIntegrity
-    maxIntegrity: 100
-    thermalInsulation: 0.85
-    coolingCapacity: 150
+    maxIntegrity: 150
+    thermalInsulation: 0.9
+    coolingCapacity: 200
   - type: Damageable
     damageContainer: Inorganic
     damageModifierSet: Metallic

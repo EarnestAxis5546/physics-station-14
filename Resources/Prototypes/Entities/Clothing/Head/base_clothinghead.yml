@@ -115,6 +115,11 @@
   id: ClothingHeadEVAHelmetBase
   name: base space helmet
   components:
+# Physics Station 14
+  - type: SuitIntegrity
+    maxIntegrity: 50
+    thermalInsulation: 0.8
+    coolingCapacity: 60
 # SlotBlocker blocked until UI change
 #  - type: SlotBlock
 #    slots: [ears, eyes, mask]
@@ -151,6 +156,10 @@
   name: base hardsuit helmet
   categories: [ HideSpawnMenu ]
   components:
+  - type: SuitIntegrity
+    maxIntegrity: 75
+    thermalInsulation: 0.85
+    coolingCapacity: 80
 # SlotBlocker blocked until UI change
 #  - type: SlotBlock
 #    slots: [ears, eyes, mask]
