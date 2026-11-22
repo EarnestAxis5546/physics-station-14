@@ -291,6 +291,29 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
             }
         }
 
+        // Orbital overlay: star, hazard zone, orbit rings, planet markers.
+        var worldToView = worldToShuttle * shuttleToView;
+        DrawOrbitals(handle, worldToView, xform.MapID, viewAABB);
+
+        // Velocity vector for our own grid.
+        if (ourGridId != null && bodyQuery.TryComp(ourGridId.Value, out var ourBody))
+        {
+            var ourPos = _transform.GetWorldPosition(ourGridId.Value);
+            DrawVelocityVector(handle, worldToView, ourPos, ourBody.LinearVelocity, VelocityColor);
+        }
+
+        // Velocity vectors for other grids already gathered by the radar query.
+        foreach (var grid in _grids)
+        {
+            if (grid.Owner == ourGridId || !bodyQuery.TryComp(grid.Owner, out var gridBody))
+                continue;
+
+            var gridPos = _transform.GetWorldPosition(grid.Owner);
+            if (!viewAABB.Contains(gridPos))
+                continue;
+
+            DrawVelocityVector(handle, worldToView, gridPos, gridBody.LinearVelocity, VelocityColor);
+        }
     }
 
     /// <summary>
