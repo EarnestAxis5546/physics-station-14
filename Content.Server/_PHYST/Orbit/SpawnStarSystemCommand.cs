@@ -48,7 +48,7 @@ public sealed class SpawnStarSystemCommand : IConsoleCommand
 
         var grid = _ent.CreateEntityUninitialized(null, gridCoords);
         _ent.AddComponent<MapGridComponent>(grid);
-        var body = _ent.AddComponent<PhysicsComponent>(grid);
+        var body = _ent.EnsureComponent<PhysicsComponent>(grid);
         _ent.InitializeEntity(grid);
 
         // Configure the body so velocity steering actually moves it:
