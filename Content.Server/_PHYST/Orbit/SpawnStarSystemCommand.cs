@@ -18,7 +18,8 @@ public sealed class SpawnStarSystemCommand : IConsoleCommand
 
     public string Command => "spawnstarsystem";
     public string Description => "Spawns a star, planet markers, and a test orbital grid on the current map.";
-    public string Help => "spawnstarsystem";
+    public string Help => "spawnstarsystem [gridRadius] [planetRadius] [planetAngleDeg]\n" +
+                          "Defaults: gridRadius=200 planetRadius=140 planetAngleDeg=45 — inside a 256m radar.";
 
     public void Execute(IConsoleShell shell, string argStr, string[] args)
     {
@@ -31,28 +32,31 @@ public sealed class SpawnStarSystemCommand : IConsoleCommand
             return;
         }
 
+        var gridRadius = args.Length > 0 && float.TryParse(args[0], out var gr) ? gr : 200f;
+        var planetRadius = args.Length > 1 && float.TryParse(args[1], out var pr) ? pr : 140f;
+        var planetAngle = args.Length > 2 && float.TryParse(args[2], out var pa) ? pa * MathF.PI / 180f : MathF.PI / 4f;
+
         var mapUid = xform.MapUid.Value;
         var origin = new EntityCoordinates(mapUid, Vector2.Zero);
 
         var star = _ent.SpawnEntity("StarSystemCenter", origin);
         shell.WriteLine($"Star: {_ent.GetNetEntity(star)}");
 
-        var planet = _ent.SpawnEntity("OrbitalPlanetMarker", origin);
-        _ent.GetComponent<OrbitalPlanetMarkerComponent>(planet).Star = star;
+        // Planet placed directly at its orbital position so it's visible immediately.
+        var planetOffset = new Vector2(MathF.Cos(planetAngle), MathF.Sin(planetAngle)) * planetRadius;
+        var planet = _ent.SpawnEntity("OrbitalPlanetMarker", new EntityCoordinates(mapUid, planetOffset));
+        var planetComp = _ent.GetComponent<OrbitalPlanetMarkerComponent>(planet);
+        planetComp.Star = star;
+        planetComp.OrbitRadius = planetRadius;
+        planetComp.Angle = planetAngle;
         shell.WriteLine($"Planet: {_ent.GetNetEntity(planet)}");
 
-        // Test grid: bare grid spawned at (OrbitRadius, 0) relative to the star
-        // so it starts on its intended orbit rather than inside the hazard zone.
-        const float orbitRadius = 300f;
-        var gridCoords = new EntityCoordinates(mapUid, new Vector2(orbitRadius, 0f));
-
-        var grid = _ent.CreateEntityUninitialized(null, gridCoords);
+        // Test grid spawned on its orbit at (gridRadius, 0).
+        var grid = _ent.CreateEntityUninitialized(null, new EntityCoordinates(mapUid, new Vector2(gridRadius, 0f)));
         _ent.AddComponent<MapGridComponent>(grid);
-        var body = _ent.EnsureComponent<PhysicsComponent>(grid);
+        var body = _ent.AddComponent<PhysicsComponent>(grid);
         _ent.InitializeEntity(grid);
 
-        // Configure the body so velocity steering actually moves it:
-        // dynamic, awake, and unaffected by damping/friction defaults.
         var physics = _ent.System<SharedPhysicsSystem>();
         physics.SetBodyType(grid, BodyType.Dynamic, body: body);
         physics.SetLinearDamping(grid, body, 0f);
@@ -62,9 +66,10 @@ public sealed class SpawnStarSystemCommand : IConsoleCommand
 
         var orbit = _ent.EnsureComponent<OrbitalGridComponent>(grid);
         orbit.Star = star;
-        orbit.OrbitRadius = orbitRadius;
-        orbit.AngularVelocity = 0.01f;
+        orbit.OrbitRadius = gridRadius;
+        orbit.AngularVelocity = 0.02f;
         orbit.SpinVelocity = 0.05f;
+        orbit.Mode = OrbitMode.Assist;
 
         shell.WriteLine($"Grid: {_ent.GetNetEntity(grid)}");
     }

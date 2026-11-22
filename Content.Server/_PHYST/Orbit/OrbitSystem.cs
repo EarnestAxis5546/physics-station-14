@@ -21,9 +21,8 @@ public sealed class OrbitalSystem : EntitySystem
     private EntityQuery<StarSystemCenterComponent> _starQuery;
 
     /// <summary>
-    /// Server-side tracking of which grids are currently inside which planet's
-    /// entry zone. Key: grid uid, Value: set of planet uids it's inside.
-    /// Kept outside component state — not networked, not persisted.
+    /// Server-side tracking of which grids are inside which planet's entry
+    /// zone. Not networked, not persisted.
     /// </summary>
     private readonly Dictionary<EntityUid, HashSet<EntityUid>> _insidePlanetZones = new();
 
@@ -46,6 +45,18 @@ public sealed class OrbitalSystem : EntitySystem
     private void OnGridMapInit(Entity<OrbitalGridComponent> ent, ref MapInitEvent args)
     {
         ent.Comp.Star ??= FindStarOnMap(ent);
+        ent.Comp.SettleTimer = ent.Comp.SettleTime;
+
+        // Seed the orbital angle from the spawn position so eccentric orbits
+        // start at the correct anomaly instead of jumping to angle 0.
+        if (ent.Comp.Star is { } star &&
+            _xformQuery.TryComp(star, out var starXform) &&
+            _xformQuery.TryComp(ent, out var gridXform))
+        {
+            var toGrid = _xform.GetWorldPosition(gridXform) - _xform.GetWorldPosition(starXform);
+            if (toGrid.LengthSquared() > 1e-6f)
+                ent.Comp.Angle = MathF.Atan2(toGrid.Y, toGrid.X);
+        }
     }
 
     private void OnGridTerminating(Entity<OrbitalGridComponent> ent, ref EntityTerminatingEvent args)
@@ -90,9 +101,6 @@ public sealed class OrbitalSystem : EntitySystem
 
             var starPos = _xform.GetWorldPosition(starXform);
             var offset = new Vector2(MathF.Cos(planet.Angle), MathF.Sin(planet.Angle)) * planet.OrbitRadius;
-
-            // Markers are kinematic map objects — a direct position set is fine
-            // and cheap since they have no physics body.
             _xform.SetWorldPosition(uid, starPos + offset);
         }
     }
@@ -102,6 +110,15 @@ public sealed class OrbitalSystem : EntitySystem
         var query = EntityQueryEnumerator<OrbitalGridComponent, TransformComponent, PhysicsComponent>();
         while (query.MoveNext(out var uid, out var orbit, out var xform, out var body))
         {
+            var gridPos = _xform.GetWorldPosition(xform);
+
+            // Free mode: no steering, just zone tracking.
+            if (orbit.Mode == OrbitMode.Free)
+            {
+                CheckPlanetEntry(uid, gridPos, xform.MapID);
+                continue;
+            }
+
             if (orbit.Star is not { } star ||
                 !_starQuery.TryComp(star, out var starComp) ||
                 !_xformQuery.TryComp(star, out var starXform) ||
@@ -109,29 +126,52 @@ public sealed class OrbitalSystem : EntitySystem
                 continue;
 
             var starPos = _xform.GetWorldPosition(starXform);
-            var gridPos = _xform.GetWorldPosition(xform);
             var toGrid = gridPos - starPos;
             var dist = toGrid.Length();
 
             if (dist < 1e-3f)
                 continue;
 
+            // Settle ramp: 0 → 1 over SettleTime so spawns aren't yanked.
+            var settle = 1f;
+            if (orbit.SettleTimer > 0f)
+            {
+                orbit.SettleTimer = MathF.Max(0f, orbit.SettleTimer - frameTime);
+                var t = 1f - orbit.SettleTimer / MathF.Max(orbit.SettleTime, 1e-3f);
+                settle = t * t * (3f - 2f * t); // smoothstep
+            }
+
             var radial = toGrid / dist;
-            var tangent = new Vector2(-radial.Y, radial.X); // counter-clockwise
-
-            // Ideal tangential speed for the current angle rate.
             var angular = orbit.AngularVelocity * starComp.OrbitalSpeedMultiplier;
-            var tangentialVel = tangent * angular * dist;
 
-            // Gentle radial spring toward the desired orbit radius.
-            // CorrectionStrength is a 1/s factor — no error/frameTime snapping.
-            var radialError = orbit.OrbitRadius - dist;
+            // Advance the tracked anomaly (used for eccentric orbits).
+            orbit.Angle = (orbit.Angle + angular * frameTime) % MathF.Tau;
+
+            // Desired radius: circle, or ellipse via the orbit equation.
+            var e = Math.Clamp(orbit.Eccentricity, 0f, 0.95f);
+            var desiredRadius = e > 0f
+                ? orbit.OrbitRadius * (1f - e * e) / (1f + e * MathF.Cos(orbit.Angle))
+                : orbit.OrbitRadius;
+
+            // Tangent direction follows the sign of angular velocity.
+            var tangent = new Vector2(-radial.Y, radial.X) * MathF.Sign(angular);
+
+            // Ideal tangential speed scales with desired radius, not current
+            // distance — this is what stops far-away grids being flung.
+            var tangentialVel = tangent * MathF.Abs(angular) * desiredRadius;
+
+            // Gentle radial spring toward the desired radius.
+            var radialError = desiredRadius - dist;
             var radialVel = radial * radialError * orbit.CorrectionStrength;
 
             var desired = tangentialVel + radialVel;
 
-            // Blend toward desired velocity so we don't fight the solver.
-            var blend = MathF.Min(1f, orbit.CorrectionStrength * frameTime * 10f);
+            // Exponential approach to desired velocity — frame-rate independent,
+            // no error/frameTime blowups, and capped so Assist stays gentle.
+            var damping = orbit.Mode == OrbitMode.Locked
+                ? MathF.Max(orbit.VelocityDamping, 2f)
+                : orbit.VelocityDamping;
+            var blend = 1f - MathF.Exp(-damping * settle * frameTime);
             var newVel = Vector2.Lerp(body.LinearVelocity, desired, blend);
 
             _physics.SetLinearVelocity(uid, newVel, body: body);
@@ -149,7 +189,6 @@ public sealed class OrbitalSystem : EntitySystem
     /// </summary>
     private void UpdateStarHazards()
     {
-        // Collect star positions per map once.
         var stars = new List<(EntityUid Uid, StarSystemCenterComponent Comp, Vector2 Pos, MapId Map)>();
         var starQuery = EntityQueryEnumerator<StarSystemCenterComponent, TransformComponent>();
         while (starQuery.MoveNext(out var starUid, out var starComp, out var starXform))
@@ -186,11 +225,6 @@ public sealed class OrbitalSystem : EntitySystem
         Log.Warning($"Grid {ToPrettyString(grid)} entered hazard radius of {ToPrettyString(star)}");
     }
 
-    /// <summary>
-    /// Fires <see cref="OnPlanetEntry"/> once when a grid crosses into a
-    /// planet's entry zone, and again only after it has fully left.
-    /// Only planets on the same MapID are considered.
-    /// </summary>
     private void CheckPlanetEntry(EntityUid grid, Vector2 gridPos, MapId gridMap)
     {
         if (!_insidePlanetZones.TryGetValue(grid, out var inside))
@@ -209,13 +243,9 @@ public sealed class OrbitalSystem : EntitySystem
             var isInside = (gridPos - planetPos).Length() < planet.EntryRadius;
 
             if (isInside && inside.Add(planetUid))
-            {
                 OnPlanetEntry(grid, planetUid, planet);
-            }
             else if (!isInside)
-            {
                 inside.Remove(planetUid);
-            }
         }
 
         if (inside.Count == 0)
@@ -224,7 +254,6 @@ public sealed class OrbitalSystem : EntitySystem
 
     /// <summary>
     /// Hook: called once when a grid enters a planet's entry radius.
-    /// Stage 1 stub — replace with FTL-to-planet-map / docking logic.
     /// </summary>
     private void OnPlanetEntry(EntityUid grid, EntityUid planet, OrbitalPlanetMarkerComponent planetComp)
     {
