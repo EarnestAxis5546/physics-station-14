@@ -1,4 +1,3 @@
-// Physics Station 14
 using System.Numerics;
 using Content.Shared.Orbit;
 using Robust.Client.Graphics;
@@ -19,7 +18,6 @@ public sealed partial class ShuttleNavControl
     private static readonly Color EntryFillColor = new(120, 190, 255, 14);
     private static readonly Color EntryOutlineColor = new(120, 190, 255, 80);
     private static readonly Color VelocityColor = new(120, 255, 140, 220);
-    private static readonly Color EdgeTickColor = new(200, 210, 230, 160);
 
     /// <summary>World m/s that maps to a full-length arrow.</summary>
     private const float VelocityArrowScale = 30f;
@@ -32,8 +30,15 @@ public sealed partial class ShuttleNavControl
     private const float EdgeMargin = 10f;
 
     /// <summary>
+    /// Scratch buffer for edge-tick triangles. Heap-allocated (not stackalloc)
+    /// to keep ILVerify happy.
+    /// </summary>
+    private readonly Vector2[] _tickVerts = new Vector2[4];
+
+    /// <summary>
     /// Draws the star, hazard zone, orbital rings, planet markers, and
-    /// off-screen edge ticks. Call from Draw() after the grid pass.
+    /// off-screen edge ticks. Works whether or not the console is on a grid —
+    /// it only needs a valid map position from _coordinates.
     /// </summary>
     private void DrawOrbitals(
         DrawingHandleScreen handle,
@@ -55,9 +60,8 @@ public sealed partial class ShuttleNavControl
 
             var starWorld = _transform.GetWorldPosition(starXform);
             var starUi = Vector2.Transform(starWorld, worldToView);
-            var onScreen = viewAABB.Enlarged(star.HazardRadius).Contains(starWorld);
 
-            if (!onScreen)
+            if (!viewAABB.Enlarged(star.HazardRadius).Contains(starWorld))
             {
                 DrawEdgeTick(handle, viewCenter, viewRadius, starUi, StarColor);
                 continue;
@@ -126,7 +130,6 @@ public sealed partial class ShuttleNavControl
             if (metaQuery.TryComp(planetUid, out var meta) && !string.IsNullOrEmpty(meta.EntityName))
             {
                 var dims = handle.GetDimensions(Font, meta.EntityName, 0.8f);
-                // Centered below the marker, clamped inside the control.
                 var labelPos = planetUi + new Vector2(-dims.X / 2f, dotPx + 6f);
                 labelPos = Vector2.Clamp(labelPos, Vector2.Zero,
                     PixelSize - new Vector2(dims.X, dims.Y));
@@ -158,15 +161,13 @@ public sealed partial class ShuttleNavControl
         var baseCenter = tip - dir * 7f;
         const float halfWidth = 4f;
 
-        var verts = new[]
-        {
-            tip,
-            baseCenter + perp * halfWidth,
-            baseCenter - perp * halfWidth,
-        };
+        _tickVerts[0] = tip;
+        _tickVerts[1] = baseCenter + perp * halfWidth;
+        _tickVerts[2] = baseCenter - perp * halfWidth;
+        _tickVerts[3] = tip; // close the LineStrip loop
 
-        handle.DrawPrimitives(DrawPrimitiveTopology.TriangleFan, verts, color.WithAlpha(0.35f));
-        handle.DrawPrimitives(DrawPrimitiveTopology.LineStrip, verts, color);
+        handle.DrawPrimitives(DrawPrimitiveTopology.TriangleFan, _tickVerts.AsSpan(0, 3), color.WithAlpha(0.35f));
+        handle.DrawPrimitives(DrawPrimitiveTopology.LineStrip, _tickVerts.AsSpan(0, 4), color);
     }
 
     /// <summary>
@@ -187,12 +188,11 @@ public sealed partial class ShuttleNavControl
         var speed = MathF.Sqrt(speedSq);
         var dir = linearVelocity / speed;
 
-        // Pixel-space length: proportional to speed, clamped for readability.
         var lenPx = Math.Clamp(speed / VelocityArrowScale * ArrowMaxPx, ArrowMinPx, ArrowMaxPx);
 
         var startUi = Vector2.Transform(worldPos, worldToView);
-        // Direction must be transformed through the linear part of the matrix
-        // (rotation + Y-flip), not just appended in world space.
+        // Transform direction through the linear part only (rotation + Y-flip),
+        // not the translation.
         var dirUi = Vector2.TransformNormal(dir, worldToView);
         var dirUiLenSq = dirUi.LengthSquared();
         if (dirUiLenSq < 1e-6f)
@@ -203,7 +203,6 @@ public sealed partial class ShuttleNavControl
 
         handle.DrawLine(startUi, endUi, color);
 
-        // Arrowhead.
         var perp = new Vector2(-dirUi.Y, dirUi.X);
         const float headLen = 6f;
         const float headSpread = 0.45f;

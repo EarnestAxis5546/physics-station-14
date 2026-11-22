@@ -54,7 +54,8 @@ public sealed class SpawnStarSystemCommand : IConsoleCommand
         // Test grid spawned on its orbit at (gridRadius, 0).
         var grid = _ent.CreateEntityUninitialized(null, new EntityCoordinates(mapUid, new Vector2(gridRadius, 0f)));
         _ent.AddComponent<MapGridComponent>(grid);
-        var body = _ent.AddComponent<PhysicsComponent>(grid);
+        // MapGridComponent auto-attaches PhysicsComponent — EnsureComponent, never AddComponent.
+        var body = _ent.EnsureComponent<PhysicsComponent>(grid);
         _ent.InitializeEntity(grid);
 
         var physics = _ent.System<SharedPhysicsSystem>();

@@ -4,6 +4,7 @@ using Robust.Shared.Map;
 using Robust.Shared.Map.Components;
 using Robust.Shared.Physics.Components;
 using Robust.Shared.Physics.Systems;
+using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom;
 
 namespace Content.Server.Orbit;
 
@@ -72,7 +73,7 @@ public sealed class OrbitalSystem : EntitySystem
         var query = EntityQueryEnumerator<StarSystemCenterComponent, TransformComponent>();
         while (query.MoveNext(out var starUid, out _, out var starXform))
         {
-            if (starXform.MapUid == xform.MapUid)
+            if (starXform.MapUid == xform.MapUid && !HasComp<MapGridComponent>(starUid))
                 return starUid;
         }
         return null;
@@ -186,6 +187,7 @@ public sealed class OrbitalSystem : EntitySystem
     /// <summary>
     /// Checks every physics-enabled grid on each star's map against the star's
     /// hazard radius — including shuttles and other non-orbital grids.
+    /// The star itself is never a grid, so it can't self-trigger.
     /// </summary>
     private void UpdateStarHazards()
     {
