@@ -278,13 +278,24 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
             DrawDocks(handle, gUid, curGridToView);
         }
 
+        // If we've set the controlling console, and it's on a different grid
+        // to the shuttle itself, then draw an additional marker to help the
+        // player determine where they are relative to the shuttle.
+        if (_consoleEntity != null && xformQuery.TryGetComponent(_consoleEntity, out var consoleXform))
+        {
+            if (consoleXform.ParentUid != _coordinates.Value.EntityId)
+            {
+                var consolePositionWorld = _transform.GetWorldPosition((EntityUid)_consoleEntity);
+                var p = Vector2.Transform(consolePositionWorld, worldToShuttle * shuttleToView);
+                handle.DrawCircle(p, 5, Color.ToSrgb(Color.Cyan), true);
+            }
+        }
+
         // Orbital overlay: star, hazard zone, orbit rings, planet markers, edge ticks.
-        // Runs even when ourGridId is null — it only needs valid map coordinates,
-        // which were already validated above (MapId.Nullspace early-return).
         var worldToView = worldToShuttle * shuttleToView;
         DrawOrbitals(handle, worldToView, xform.MapID, viewAABB);
 
-        // Velocity vector for our own grid (skipped entirely when off-grid).
+        // Velocity vector for our own grid.
         if (ourGridId != null && bodyQuery.TryComp(ourGridId.Value, out var ourBody))
         {
             var ourPos = _transform.GetWorldPosition(ourGridId.Value);
@@ -302,19 +313,6 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
                 continue;
 
             DrawVelocityVector(handle, worldToView, gridPos, gridBody.LinearVelocity, VelocityColor);
-        }
-
-        // If we've set the controlling console, and it's on a different grid
-        // to the shuttle itself, then draw an additional marker to help the
-        // player determine where they are relative to the shuttle.
-        if (_consoleEntity != null && xformQuery.TryGetComponent(_consoleEntity, out var consoleXform))
-        {
-            if (consoleXform.ParentUid != _coordinates.Value.EntityId)
-            {
-                var consolePositionWorld = _transform.GetWorldPosition((EntityUid)_consoleEntity);
-                var p = Vector2.Transform(consolePositionWorld, worldToShuttle * shuttleToView);
-                handle.DrawCircle(p, 5, Color.ToSrgb(Color.Cyan), true);
-            }
         }
     }
 
