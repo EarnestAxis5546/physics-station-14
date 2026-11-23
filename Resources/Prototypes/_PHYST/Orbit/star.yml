@@ -7,6 +7,13 @@
   - type: StarSystemCenter
     hazardRadius: 40
     orbitalSpeedMultiplier: 1
+    hazardTickInterval: 1.0
+    tilesDestroyedPerTick: 2
+    fireStacksPerTick: 0.5
+    damageEntities: true
+    hazardDamage:
+      types:
+        Heat: 5
   - type: PointLight
     radius: 30
     energy: 4
