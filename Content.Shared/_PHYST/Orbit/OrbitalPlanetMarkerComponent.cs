@@ -1,3 +1,4 @@
+// Physics Station 14
 using Robust.Shared.GameStates;
 
 namespace Content.Shared.Orbit;
@@ -22,7 +23,6 @@ public sealed partial class OrbitalPlanetMarkerComponent : Component
 
     /// <summary>
     /// Angular velocity in radians per second (before the star's multiplier).
-    /// Sign controls direction: positive = counter-clockwise, negative = clockwise.
     /// </summary>
     [DataField, AutoNetworkedField]
     public float AngularVelocity = 0.002f;

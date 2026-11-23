@@ -254,7 +254,7 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
 
                 // clamp the IFF label's UI position to within the viewport extents so it hugs the edges of the viewport
                 // coord label intentionally isn't clamped so we don't get ugly clutter at the edges
-                var controlExtents = PixelSize - new Vector2(labelDimensions.X, labelDimensions.Y); //new Vector2(labelDimensions.X * 2f, labelDimensions.Y);
+                var controlExtents = PixelSize - new Vector2(labelDimensions.X, labelDimensions.Y);
                 labelUiPosition = Vector2.Clamp(labelUiPosition, Vector2.Zero, controlExtents);
 
                 // draw IFF label
@@ -316,7 +316,6 @@ public sealed partial class ShuttleNavControl : BaseShuttleControl
                 handle.DrawCircle(p, 5, Color.ToSrgb(Color.Cyan), true);
             }
         }
-
     }
 
     /// <summary>

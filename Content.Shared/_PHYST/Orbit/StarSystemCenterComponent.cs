@@ -1,3 +1,4 @@
+// Physics Station 1
 using Robust.Shared.GameStates;
 
 namespace Content.Shared.Orbit;
@@ -5,7 +6,6 @@ namespace Content.Shared.Orbit;
 /// <summary>
 /// Marks an entity as the gravitational center of a star system.
 /// Orbiting grids and planet markers resolve against this entity.
-/// This is a map-level entity — never a grid.
 /// </summary>
 [RegisterComponent, NetworkedComponent, AutoGenerateComponentState]
 public sealed partial class StarSystemCenterComponent : Component
