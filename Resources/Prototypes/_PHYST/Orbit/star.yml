@@ -1,0 +1,13 @@
+- type: entity
+  id: StarSystemCenter
+  name: star
+  description: The central star of this orbital system.
+  noSpawn: true
+  components:
+  - type: StarSystemCenter
+    hazardRadius: 40
+    orbitalSpeedMultiplier: 1
+  - type: PointLight
+    radius: 30
+    energy: 4
+    color: "#ffeecc"
