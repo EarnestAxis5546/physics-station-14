@@ -156,14 +156,12 @@ public sealed partial class ShuttleNavControl
 
         var tip = viewCenter + dir * viewRadius;
         var baseCenter = tip - dir * 7f;
-        const float halfWidth = 4f;
+        var halfWidth = 4f;
 
-        var verts = new[]
-        {
-            tip,
-            baseCenter + perp * halfWidth,
-            baseCenter - perp * halfWidth,
-        };
+        Span<Vector2> verts = stackalloc Vector2[3];
+        verts[0] = tip;
+        verts[1] = baseCenter + perp * halfWidth;
+        verts[2] = baseCenter - perp * halfWidth;
 
         handle.DrawPrimitives(DrawPrimitiveTopology.TriangleFan, verts, color.WithAlpha(0.35f));
         handle.DrawPrimitives(DrawPrimitiveTopology.LineStrip, verts, color);
