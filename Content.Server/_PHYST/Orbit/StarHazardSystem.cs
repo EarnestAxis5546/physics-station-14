@@ -41,6 +41,11 @@ public sealed class StarHazardSystem : EntitySystem
     private readonly Dictionary<EntityUid, TimeSpan> _nextTick = new();
 
     /// <summary>
+    /// Reusable buffer for child entities while applying hazard effects.
+    /// </summary>
+    private readonly List<EntityUid> _childrenCache = new();
+
+    /// <summary>
     /// Seconds between hazard zone membership checks.
     /// </summary>
     private const float CheckInterval = 0.5f;
@@ -163,15 +168,21 @@ public sealed class StarHazardSystem : EntitySystem
 
     /// <summary>
     /// Damages and ignites entities parented to the grid. Entities on a grid
-    /// are children of the grid's transform, so the child enumerator covers
-    /// everything aboard without a broadphase lookup.
+    /// are children of the grid's transform, so snapshotting the children lets
+    /// us safely damage/ignite/delete entities without invalidating the enumerator.
     /// </summary>
     private void DamageEntitiesOnGrid(EntityUid starUid, StarSystemCenterComponent star, EntityUid gridUid)
     {
         var xform = Transform(gridUid);
-        var enumerator = xform.ChildEnumerator;
 
+        _childrenCache.Clear();
+        var enumerator = xform.ChildEnumerator;
         while (enumerator.MoveNext(out var child))
+        {
+            _childrenCache.Add(child);
+        }
+
+        foreach (var child in _childrenCache)
         {
             // Never touch the star itself, and tolerate mid-tick deletion.
             if (child == starUid || TerminatingOrDeleted(child))
@@ -204,17 +215,20 @@ public sealed class StarHazardSystem : EntitySystem
     private void DestroyRandomTiles(StarSystemCenterComponent star, EntityUid gridUid, MapGridComponent grid)
     {
         var aabb = grid.LocalAABB;
+        var minX = (int)MathF.Floor(aabb.Left);
+        var maxX = (int)MathF.Ceiling(aabb.Right);
+        var minY = (int)MathF.Floor(aabb.Bottom);
+        var maxY = (int)MathF.Ceiling(aabb.Top);
+
+        if (maxX <= minX || maxY <= minY)
+            return;
+
         var removed = new List<(Vector2i GridIndices, Tile Tile)>();
 
         // Bounded attempts so sparse grids don't loop forever.
         var attempts = star.TilesDestroyedPerTick * 8;
         for (var i = 0; i < attempts && removed.Count < star.TilesDestroyedPerTick; i++)
         {
-            var minX = (int)MathF.Floor(aabb.Left);
-            var maxX = (int)MathF.Ceiling(aabb.Right);
-            var minY = (int)MathF.Floor(aabb.Bottom);
-            var maxY = (int)MathF.Ceiling(aabb.Top);
-
             var indices = new Vector2i(
                 _random.Next(minX, maxX),
                 _random.Next(minY, maxY));
